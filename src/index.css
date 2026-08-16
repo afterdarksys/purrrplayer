@@ -333,6 +333,20 @@ button {
   gap: 14px;
 }
 
+.purrActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.purrButton.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  color: var(--accent-strong);
+}
+
 .playButton,
 .iconButton,
 .secondaryButton,

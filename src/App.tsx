@@ -8,6 +8,7 @@ import {
   SkipForward,
   Volume1,
   Volume2,
+  Waves,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { decodeTrack, formatTime, type DecodedTrack } from '@/lib/audio'
@@ -39,6 +40,7 @@ export default function App() {
 
   const visualizerMode = usePrefs(state => state.visualizerMode)
   const volume = usePrefs(state => state.volume)
+  const purrBetweenSongs = usePrefs(state => state.purrBetweenSongs)
   const setPref = usePrefs(state => state.set)
 
   const activeTrack = useMemo(
@@ -72,7 +74,7 @@ export default function App() {
       setCurrentTime(audio.currentTime)
       setDuration(audio.duration || activeTrack?.decoded?.duration || 0)
     }
-    const ended = () => void playNext()
+    const ended = () => void handleTrackEnded()
     const playing = () => setIsPlaying(true)
     const pause = () => setIsPlaying(false)
 
@@ -88,7 +90,7 @@ export default function App() {
       audio.removeEventListener('play', playing)
       audio.removeEventListener('pause', pause)
     }
-  }, [activeTrack?.id, tracks, activeId])
+  }, [activeTrack?.id, tracks, activeId, purrBetweenSongs])
 
   function ensureAudioGraph(): AnalyserNode | null {
     const audio = audioRef.current
@@ -155,6 +157,22 @@ export default function App() {
       void audioContextRef.current?.resume()
       void audioRef.current?.play()
     }, 40)
+  }
+
+  async function playPurr(): Promise<void> {
+    const purr = new Audio('/purrs/cat-purr-active-loop.wav')
+    purr.volume = Math.min(0.7, Math.max(0.18, volume * 0.72))
+    await purr.play().catch(() => undefined)
+    if (purr.paused) return
+    await new Promise<void>(resolve => {
+      purr.addEventListener('ended', () => resolve(), { once: true })
+      purr.addEventListener('error', () => resolve(), { once: true })
+    })
+  }
+
+  async function handleTrackEnded() {
+    if (purrBetweenSongs && tracks.length > 1) await playPurr()
+    await playNext()
   }
 
   async function playNext() {
@@ -265,6 +283,19 @@ export default function App() {
             </button>
             <button className="iconButton large" onClick={playNext} aria-label="Next track">
               <SkipForward size={22} />
+            </button>
+          </div>
+
+          <div className="purrActions">
+            <button className="secondaryButton purrButton" onClick={() => { void playPurr() }}>
+              <Waves size={17} />
+              Add a purrr
+            </button>
+            <button
+              className={clsx('secondaryButton purrButton', purrBetweenSongs && 'active')}
+              onClick={() => setPref('purrBetweenSongs', !purrBetweenSongs)}
+            >
+              Purrr between songs
             </button>
           </div>
 

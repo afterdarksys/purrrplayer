@@ -19,6 +19,7 @@ const VISUALIZERS: Array<{ id: VisualizerMode; label: string; icon: React.ReactN
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const theme = usePrefs(state => state.theme)
   const reduceMotion = usePrefs(state => state.reduceMotion)
+  const purrBetweenSongs = usePrefs(state => state.purrBetweenSongs)
   const visualizerMode = usePrefs(state => state.visualizerMode)
   const set = usePrefs(state => state.set)
 
@@ -82,10 +83,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </button>
         </div>
 
+        <div className="settingsRow">
+          <div>
+            <strong>Purrr between songs</strong>
+            <small>Plays the bundled purr bumper before the next queued track.</small>
+          </div>
+          <button
+            className={purrBetweenSongs ? 'toggle on' : 'toggle'}
+            onClick={() => set('purrBetweenSongs', !purrBetweenSongs)}
+            aria-pressed={purrBetweenSongs}
+          >
+            <span />
+          </button>
+        </div>
+
         <button className="secondaryButton" onClick={() => {
           set('theme', 'gomeow')
           set('visualizerMode', 'spectrum')
           set('reduceMotion', false)
+          set('purrBetweenSongs', false)
         }}>
           <RotateCcw size={16} />
           Reset display

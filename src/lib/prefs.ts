@@ -8,6 +8,7 @@ export interface Prefs {
   reduceMotion: boolean
   visualizerMode: VisualizerMode
   volume: number
+  purrBetweenSongs: boolean
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -15,6 +16,7 @@ export const DEFAULT_PREFS: Prefs = {
   reduceMotion: false,
   visualizerMode: 'spectrum',
   volume: 0.85,
+  purrBetweenSongs: false,
 }
 
 const STORE_FILE = 'purrr-player-prefs.json'
