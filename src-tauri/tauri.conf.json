@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Purrr Player",
+  "version": "0.1.0",
+  "identifier": "media.gomeow.purrrplayer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1421",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Purrr Player",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 860,
+        "minHeight": 620,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "center": true,
+        "visible": true,
+        "devtools": false
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$AUDIO/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$MUSIC/**", "$HOME/**"]
+      },
+      "csp": "default-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost http://asset.localhost asset: blob: data:; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset:; media-src 'self' asset: http://asset.localhost blob: data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "exceptionDomain": null,
+      "signingIdentity": null,
+      "dmg": {
+        "background": null
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["mp3", "wav", "flac", "aiff", "aif", "ogg", "oga", "m4a", "aac", "opus", "webm"],
+        "name": "Audio File",
+        "description": "Audio file",
+        "mimeType": "audio/*"
+      }
+    ]
+  }
+}
