@@ -11,7 +11,16 @@ import {
   Waves,
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { listen } from '@tauri-apps/api/event'
 import { decodeTrack, formatTime, type DecodedTrack } from '@/lib/audio'
+import {
+  cliAudioFileUrl,
+  getInitialCliRequest,
+  parseCliCommand,
+  resolveCliAudioFiles,
+  type CliCommand,
+  type CliRequest,
+} from '@/lib/cli'
 import { pickAudioFiles, type PickedAudioFile } from '@/lib/files'
 import { usePrefs } from '@/lib/prefs'
 import { Waveform } from '@/components/Waveform'
@@ -28,6 +37,9 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
+  const tracksRef = useRef<TrackState[]>([])
+  const activeIdRef = useRef<string | null>(null)
+  const handleCliRequestRef = useRef<(request: CliRequest) => void>(() => undefined)
 
   const [tracks, setTracks] = useState<TrackState[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -49,6 +61,30 @@ export default function App() {
   )
 
   useEffect(() => { void usePrefs.getState().load() }, [])
+
+  useEffect(() => { tracksRef.current = tracks }, [tracks])
+
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
+
+  useEffect(() => {
+    handleCliRequestRef.current = request => { void handleCliRequest(request) }
+  })
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+
+    void getInitialCliRequest().then(request => {
+      if (request) handleCliRequestRef.current(request)
+    })
+
+    void listen<CliRequest>('cli-request', event => {
+      handleCliRequestRef.current(event.payload)
+    }).then(cleanup => {
+      unlisten = cleanup
+    }).catch(() => undefined)
+
+    return () => { unlisten?.() }
+  }, [])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -137,6 +173,102 @@ export default function App() {
     await addPickedFiles(await pickAudioFiles())
   }
 
+  async function addCliFiles(paths: string[], cwd: string, activate: boolean): Promise<string | null> {
+    const files = await resolveCliAudioFiles(paths, cwd)
+    if (!files.length) return null
+
+    const currentTracks = tracksRef.current
+    const nextTracks: TrackState[] = []
+    const idsByPath = new Map(
+      currentTracks
+        .filter((track): track is TrackState & { path: string } => Boolean(track.path))
+        .map(track => [track.path, track.id]),
+    )
+
+    for (const file of files) {
+      const existingId = idsByPath.get(file.path)
+      if (existingId) continue
+      const id = `${file.path}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+      idsByPath.set(file.path, id)
+      nextTracks.push({
+        id,
+        name: file.name,
+        path: file.path,
+        url: cliAudioFileUrl(file.path),
+        status: 'idle',
+      })
+    }
+
+    if (nextTracks.length) {
+      tracksRef.current = [...currentTracks, ...nextTracks]
+      setTracks(tracksRef.current)
+    }
+
+    const firstId = files.map(file => idsByPath.get(file.path)).find(Boolean) || null
+    if (activate && firstId) setActiveId(firstId)
+    else if (!activeIdRef.current && firstId) setActiveId(firstId)
+    return firstId
+  }
+
+  async function handleCliRequest(request: CliRequest) {
+    const command = parseCliCommand(request)
+    if (!command) return
+    await runCliCommand(command, request.cwd)
+  }
+
+  async function runCliCommand(command: CliCommand, cwd: string) {
+    switch (command.type) {
+      case 'play':
+        if (await addCliFiles(command.paths, cwd, true)) playSoon()
+        return
+      case 'queue':
+        await addCliFiles(command.paths, cwd, false)
+        return
+      case 'pause':
+        audioRef.current?.pause()
+        return
+      case 'toggle':
+        await togglePlay()
+        return
+      case 'next':
+        await playNext()
+        return
+      case 'previous':
+        await playPrevious()
+        return
+      case 'stop':
+        if (audioRef.current) {
+          audioRef.current.pause()
+          audioRef.current.currentTime = 0
+        }
+        return
+      case 'seek':
+        if (command.paths.length) {
+          if (!await addCliFiles(command.paths, cwd, true)) return
+          playSoon()
+          window.setTimeout(() => seekSeconds(command.seconds), 90)
+          return
+        }
+        seekSeconds(command.seconds)
+        return
+      case 'skip':
+        if (command.paths.length) {
+          if (!await addCliFiles(command.paths, cwd, true)) return
+          playSoon()
+          window.setTimeout(() => skipSeconds(command.seconds), 90)
+          return
+        }
+        skipSeconds(command.seconds)
+        return
+      case 'volume':
+        setPref('volume', Math.max(0, Math.min(1, command.value)))
+        return
+      case 'purr':
+        await playPurr()
+        return
+    }
+  }
+
   async function togglePlay() {
     const audio = audioRef.current
     if (!audio || !activeTrack) {
@@ -152,11 +284,15 @@ export default function App() {
 
   async function playTrack(id: string) {
     setActiveId(id)
+    playSoon()
+  }
+
+  function playSoon(delay = 60) {
     window.setTimeout(() => {
       ensureAudioGraph()
       void audioContextRef.current?.resume()
       void audioRef.current?.play()
-    }, 40)
+    }, delay)
   }
 
   async function playPurr(): Promise<void> {
@@ -199,6 +335,32 @@ export default function App() {
     if (!audio) return
     const targetDuration = audio.duration || activeTrack?.decoded?.duration || 0
     audio.currentTime = position * targetDuration
+  }
+
+  function seekSeconds(seconds: number) {
+    setAudioTime(() => seconds)
+  }
+
+  function skipSeconds(seconds: number) {
+    setAudioTime(audio => audio.currentTime + seconds)
+  }
+
+  function setAudioTime(getNextTime: (audio: HTMLAudioElement) => number) {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const applyTime = () => {
+      const nextTime = Math.max(0, getNextTime(audio))
+      const targetDuration = audio.duration || activeTrack?.decoded?.duration || 0
+      audio.currentTime = targetDuration ? Math.min(targetDuration, nextTime) : nextTime
+    }
+
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      applyTime()
+      return
+    }
+
+    audio.addEventListener('loadedmetadata', applyTime, { once: true })
   }
 
   function handleDrop(event: React.DragEvent) {
